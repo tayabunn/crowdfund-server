@@ -38,7 +38,25 @@ router.post('/register', async (req, res) => {
 
     await newUser.save();
 
-    res.status(201).json({ message: 'User created successfully', user: { id: newUser._id, email: newUser.email, role: newUser.role } });
+    // Generate JWT token
+    const token = jwt.sign(
+      { id: newUser._id, role: newUser.role, email: newUser.email },
+      process.env.JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+
+    res.status(201).json({ 
+      message: 'User created successfully', 
+      token,
+      user: { 
+        id: newUser._id, 
+        name: newUser.name, 
+        email: newUser.email, 
+        role: newUser.role, 
+        credits: newUser.credits, 
+        photo_url: newUser.photo_url 
+      } 
+    });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }

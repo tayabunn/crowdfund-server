@@ -3,11 +3,40 @@ const router = express.Router();
 const Campaign = require('../models/Campaign');
 const { verifyToken, verifyRole } = require('../middleware/authMiddleware');
 
-// Get all approved campaigns
+// Get all approved campaigns (with pagination, search, and category filter)
 router.get('/', async (req, res) => {
   try {
-    const campaigns = await Campaign.find({ status: 'approved' }).sort({ createdAt: -1 });
-    res.json(campaigns);
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 9;
+    const search = req.query.search || '';
+    const category = req.query.category || '';
+
+    const query = { status: 'approved' };
+
+    // Apply search filter if present
+    if (search) {
+      query.title = { $regex: search, $options: 'i' };
+    }
+
+    // Apply category filter if present (and not 'All Categories')
+    if (category && category !== 'All Categories') {
+      query.category = category;
+    }
+
+    const skipIndex = (page - 1) * limit;
+
+    const totalCampaigns = await Campaign.countDocuments(query);
+    const campaigns = await Campaign.find(query)
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .skip(skipIndex);
+
+    res.json({
+      campaigns,
+      totalCampaigns,
+      totalPages: Math.ceil(totalCampaigns / limit),
+      currentPage: page
+    });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
