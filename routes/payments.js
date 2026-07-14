@@ -4,6 +4,8 @@ const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const User = require('../models/User');
 const { verifyRole } = require('../middleware/authMiddleware');
 
+const Payment = require('../models/Payment');
+
 // Create payment intent
 router.post('/create-payment-intent', verifyRole(['Supporter']), async (req, res) => {
   try {
@@ -26,13 +28,24 @@ router.post('/create-payment-intent', verifyRole(['Supporter']), async (req, res
 // Confirm payment and add credits
 router.post('/confirm-payment', verifyRole(['Supporter']), async (req, res) => {
   try {
-    const { paymentIntentId, creditsPurchased } = req.body;
+    const { paymentIntentId, creditsPurchased, amountPaid } = req.body;
 
     // Verify payment intent with Stripe (Skipped here for simplicity, assuming client sends valid confirmation)
     // Add credits to user
     const user = await User.findById(req.user.id);
     user.credits += creditsPurchased;
     await user.save();
+
+    // Save the payment info
+    const finalAmountPaid = amountPaid || (creditsPurchased / 10);
+    const paymentRecord = new Payment({
+      supporter_email: req.user.email,
+      credits_purchased: creditsPurchased,
+      amount_paid: finalAmountPaid,
+      payment_intent_id: paymentIntentId,
+      status: 'succeeded'
+    });
+    await paymentRecord.save();
 
     res.json({ message: 'Payment successful, credits added.', credits: user.credits });
   } catch (error) {

@@ -14,13 +14,22 @@ const ContributionSchema = new mongoose.Schema({
     type: Number,
     required: true,
   },
+  Contribution_amount: {
+    type: Number,
+  },
   supporter_email: {
     type: String,
     required: true,
   },
+  Supporter_email: {
+    type: String,
+  },
   supporter_name: {
     type: String,
     required: true,
+  },
+  Supporter_name: {
+    type: String,
   },
   creator_name: {
     type: String,
@@ -34,6 +43,14 @@ const ContributionSchema = new mongoose.Schema({
     type: String,
     enum: ['pending', 'approved', 'rejected'],
     default: 'pending',
+  },
+  current_date: {
+    type: Date,
+    default: Date.now,
+  },
+  message: {
+    type: String,
+    default: ''
   }
 }, { timestamps: true });
 
