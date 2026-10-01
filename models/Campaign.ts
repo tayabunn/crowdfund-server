@@ -1,6 +1,21 @@
-const mongoose = require('mongoose');
+import mongoose, { Schema, Document } from 'mongoose';
 
-const CampaignSchema = new mongoose.Schema({
+export interface ICampaign extends Document {
+  title: string;
+  story: string;
+  category: string;
+  funding_goal: number;
+  minimum_contribution: number;
+  deadline: Date;
+  reward_info: string;
+  image_url: string;
+  status: 'pending' | 'approved' | 'rejected';
+  creator_name: string;
+  creator_email: string;
+  amount_raised: number;
+}
+
+const CampaignSchema: Schema = new Schema({
   title: {
     type: String,
     required: true,
@@ -52,4 +67,4 @@ const CampaignSchema = new mongoose.Schema({
   }
 }, { timestamps: true });
 
-module.exports = mongoose.model('Campaign', CampaignSchema);
+export default mongoose.model<ICampaign>('Campaign', CampaignSchema);

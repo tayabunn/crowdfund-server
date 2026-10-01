@@ -1,26 +1,31 @@
-const express = require('express');
+import express, { Response } from 'express';
+import Contribution from '../models/Contribution';
+import Campaign from '../models/Campaign';
+import User from '../models/User';
+import Notification from '../models/Notification';
+import { verifyRole, AuthenticatedRequest } from '../middleware/authMiddleware';
+import { sendEmail } from '../services/emailService';
+
 const router = express.Router();
-const Contribution = require('../models/Contribution');
-const Campaign = require('../models/Campaign');
-const User = require('../models/User');
-const Notification = require('../models/Notification');
-const { verifyRole } = require('../middleware/authMiddleware');
 
 // Make a contribution (Supporter)
-router.post('/', verifyRole(['Supporter']), async (req, res) => {
+router.post('/', verifyRole(['Supporter']), async (req: AuthenticatedRequest, res: Response) => {
   try {
+    if (!req.user) {
+      return res.status(401).json({ message: 'User not authenticated' });
+    }
     const { campaign_id, campaign_title, contribution_amount, Contribution_amount, creator_name, creator_email, message } = req.body;
     const finalAmount = contribution_amount || Contribution_amount;
     
     // Check if user has enough credits
     const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
     if (user.credits < finalAmount) {
       return res.status(400).json({ message: 'Insufficient credits' });
     }
 
-    // Deduct credits temporarily? (Requirements say status is pending initially).
-    // The requirement says: After submitting, save with status pending. 
-    // We will deduct credits when making the contribution to ensure they don't overspend.
+    // Deduct credits
     user.credits -= finalAmount;
     await user.save();
 
@@ -42,7 +47,7 @@ router.post('/', verifyRole(['Supporter']), async (req, res) => {
 
     // Create Notification for Creator
     const notification = new Notification({
-      message: `${user.name} made a contribution of ${contribution_amount} credits to ${campaign_title}.`,
+      message: `${user.name} made a contribution of ${finalAmount} credits to ${campaign_title}.`,
       toEmail: creator_email,
       actionRoute: '/dashboard/creator-home',
       time: new Date()
@@ -51,7 +56,7 @@ router.post('/', verifyRole(['Supporter']), async (req, res) => {
 
     // Create Notification for Supporter
     const supporterNotification = new Notification({
-      message: `You contributed ${contribution_amount} credits to "${campaign_title}".`,
+      message: `You contributed ${finalAmount} credits to "${campaign_title}".`,
       toEmail: req.user.email,
       actionRoute: `/explore/${campaign_id}`,
       time: new Date()
@@ -59,15 +64,14 @@ router.post('/', verifyRole(['Supporter']), async (req, res) => {
     await supporterNotification.save();
 
     // Send email to Creator
-    const { sendEmail } = require('../services/emailService');
     await sendEmail({
       to: creator_email,
       subject: `New Contribution received: ${campaign_title}`,
-      text: `${user.name} made a contribution of ${contribution_amount} credits to your campaign "${campaign_title}".`,
+      text: `${user.name} made a contribution of ${finalAmount} credits to your campaign "${campaign_title}".`,
       html: `
         <div style="font-family: sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 8px; max-width: 600px; margin: 0 auto;">
           <h2 style="color: #02a95c; margin-bottom: 16px;">New Campaign Contribution Received!</h2>
-          <p style="font-size: 14px; color: #333; line-height: 1.5;"><strong>${user.name}</strong> has just contributed <strong>${contribution_amount} credits</strong> to your campaign <strong>"${campaign_title}"</strong>.</p>
+          <p style="font-size: 14px; color: #333; line-height: 1.5;"><strong>${user.name}</strong> has just contributed <strong>${finalAmount} credits</strong> to your campaign <strong>"${campaign_title}"</strong>.</p>
           <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;" />
           <p style="font-size: 11px; color: #999;">This is an automated system notification from CrowdFund. Please do not reply directly to this email.</p>
         </div>
@@ -78,11 +82,11 @@ router.post('/', verifyRole(['Supporter']), async (req, res) => {
     await sendEmail({
       to: req.user.email,
       subject: `Contribution Receipt: ${campaign_title}`,
-      text: `You have successfully contributed ${contribution_amount} credits to "${campaign_title}".`,
+      text: `You have successfully contributed ${finalAmount} credits to "${campaign_title}".`,
       html: `
         <div style="font-family: sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 8px; max-width: 600px; margin: 0 auto;">
           <h2 style="color: #02a95c; margin-bottom: 16px;">Contribution Receipt</h2>
-          <p style="font-size: 14px; color: #333; line-height: 1.5;">You have successfully pledged <strong>${contribution_amount} credits</strong> to support the campaign <strong>"${campaign_title}"</strong>.</p>
+          <p style="font-size: 14px; color: #333; line-height: 1.5;">You have successfully pledged <strong>${finalAmount} credits</strong> to support the campaign <strong>"${campaign_title}"</strong>.</p>
           <p style="font-size: 14px; color: #333; line-height: 1.5;">This contribution is currently pending validation by the campaign creator.</p>
           <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;" />
           <p style="font-size: 11px; color: #999;">This is an automated system notification from CrowdFund. Please do not reply directly to this email.</p>
@@ -91,16 +95,19 @@ router.post('/', verifyRole(['Supporter']), async (req, res) => {
     });
 
     res.status(201).json(contribution);
-  } catch (error) {
+  } catch (error: any) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 
 // Get supporter contributions
-router.get('/my-contributions', verifyRole(['Supporter']), async (req, res) => {
+router.get('/my-contributions', verifyRole(['Supporter']), async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const page = parseInt(req.query.page);
-    const limit = parseInt(req.query.limit) || 5;
+    if (!req.user) {
+      return res.status(401).json({ message: 'User not authenticated' });
+    }
+    const page = parseInt(req.query.page as string);
+    const limit = parseInt(req.query.limit as string) || 5;
 
     const query = {
       $or: [
@@ -126,24 +133,30 @@ router.get('/my-contributions', verifyRole(['Supporter']), async (req, res) => {
       const contributions = await Contribution.find(query).sort({ createdAt: -1 });
       return res.json(contributions);
     }
-  } catch (error) {
+  } catch (error: any) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 
 // Get creator pending contributions
-router.get('/pending', verifyRole(['Creator']), async (req, res) => {
+router.get('/pending', verifyRole(['Creator']), async (req: AuthenticatedRequest, res: Response) => {
   try {
+    if (!req.user) {
+      return res.status(401).json({ message: 'User not authenticated' });
+    }
     const contributions = await Contribution.find({ creator_email: req.user.email, status: 'pending' });
     res.json(contributions);
-  } catch (error) {
+  } catch (error: any) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 
 // Approve or reject contribution (Creator)
-router.patch('/:id/status', verifyRole(['Creator']), async (req, res) => {
+router.patch('/:id/status', verifyRole(['Creator']), async (req: AuthenticatedRequest, res: Response) => {
   try {
+    if (!req.user) {
+      return res.status(401).json({ message: 'User not authenticated' });
+    }
     const { status } = req.body;
     const contribution = await Contribution.findOne({ _id: req.params.id, creator_email: req.user.email });
     
@@ -155,27 +168,30 @@ router.patch('/:id/status', verifyRole(['Creator']), async (req, res) => {
 
     if (status === 'approved') {
       const campaign = await Campaign.findById(contribution.campaign_id);
-      campaign.amount_raised += contribution.contribution_amount;
-      await campaign.save();
+      if (campaign) {
+        campaign.amount_raised += contribution.contribution_amount;
+        await campaign.save();
+      }
     } else if (status === 'rejected') {
       const supporter = await User.findOne({ email: contribution.supporter_email });
-      supporter.credits += contribution.contribution_amount;
-      await supporter.save();
+      if (supporter) {
+        supporter.credits += contribution.contribution_amount;
+        await supporter.save();
+      }
     }
 
     // Notify Supporter
     const notification = new Notification({
       message: `Your Contribution of ${contribution.contribution_amount} credits to ${contribution.campaign_title} was ${status} by ${contribution.creator_name}`,
-      toEmail: contribution.supporter_email || contribution.Supporter_email,
+      toEmail: contribution.supporter_email || contribution.Supporter_email || '',
       actionRoute: '/dashboard/Supporter-home',
       time: new Date()
     });
     await notification.save();
 
     // Trigger automated email
-    const { sendEmail } = require('../services/emailService');
     await sendEmail({
-      to: contribution.supporter_email || contribution.Supporter_email,
+      to: contribution.supporter_email || contribution.Supporter_email || '',
       subject: `Contribution ${status === 'approved' ? 'Approved' : 'Rejected'}: ${contribution.campaign_title}`,
       text: `Your Contribution of ${contribution.contribution_amount} credits to ${contribution.campaign_title} was ${status} by ${contribution.creator_name}`,
       html: `
@@ -189,9 +205,9 @@ router.patch('/:id/status', verifyRole(['Creator']), async (req, res) => {
     });
 
     res.json(contribution);
-  } catch (error) {
+  } catch (error: any) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 
-module.exports = router;
+export default router;

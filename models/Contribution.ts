@@ -1,6 +1,22 @@
-const mongoose = require('mongoose');
+import mongoose, { Schema, Document } from 'mongoose';
 
-const ContributionSchema = new mongoose.Schema({
+export interface IContribution extends Document {
+  campaign_id: mongoose.Types.ObjectId;
+  campaign_title: string;
+  contribution_amount: number;
+  Contribution_amount?: number;
+  supporter_email: string;
+  Supporter_email?: string;
+  supporter_name: string;
+  Supporter_name?: string;
+  creator_name: string;
+  creator_email: string;
+  status: 'pending' | 'approved' | 'rejected';
+  current_date: Date;
+  message: string;
+}
+
+const ContributionSchema: Schema = new Schema({
   campaign_id: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Campaign',
@@ -54,4 +70,4 @@ const ContributionSchema = new mongoose.Schema({
   }
 }, { timestamps: true });
 
-module.exports = mongoose.model('Contribution', ContributionSchema);
+export default mongoose.model<IContribution>('Contribution', ContributionSchema);

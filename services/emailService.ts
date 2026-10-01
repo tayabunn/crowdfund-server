@@ -1,22 +1,24 @@
-const nodemailer = require('nodemailer');
+import nodemailer from 'nodemailer';
+
+interface EmailOptions {
+  to: string;
+  subject: string;
+  text: string;
+  html: string;
+}
 
 /**
  * Sends an email using SMTP credentials or falls back to an Ethereal test account in development.
- * @param {Object} options
- * @param {string} options.to - Recipient email
- * @param {string} options.subject - Subject of the email
- * @param {string} options.text - Plain text version
- * @param {string} options.html - HTML version
  */
-async function sendEmail({ to, subject, text, html }) {
+export async function sendEmail({ to, subject, text, html }: EmailOptions) {
   try {
-    let transporter;
+    let transporter: nodemailer.Transporter;
 
     // Check if configuration exists in env
     if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
       transporter = nodemailer.createTransport({
         host: process.env.SMTP_HOST,
-        port: parseInt(process.env.SMTP_PORT) || 587,
+        port: parseInt(process.env.SMTP_PORT || '587') || 587,
         secure: process.env.SMTP_SECURE === 'true',
         auth: {
           user: process.env.SMTP_USER,
@@ -54,9 +56,7 @@ async function sendEmail({ to, subject, text, html }) {
     }
 
     return info;
-  } catch (error) {
+  } catch (error: any) {
     console.error('[Email Service Error] Failed to send email:', error.message);
   }
 }
-
-module.exports = { sendEmail };

@@ -2,10 +2,11 @@
   "name": "crowdfund-server",
   "version": "1.0.0",
   "description": "Crowdfunding Platform API",
-  "main": "index.js",
+  "main": "index.ts",
   "scripts": {
-    "start": "node index.js",
-    "dev": "nodemon index.js"
+    "start": "node dist/index.js",
+    "dev": "tsx watch index.ts",
+    "build": "tsc"
   },
   "dependencies": {
     "bcrypt": "^6.0.0",
@@ -20,9 +21,15 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
-    "@types/node": "^20",
+    "@types/bcrypt": "^5.0.2",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.0",
+    "@types/jsonwebtoken": "^9.0.8",
+    "@types/node": "^20.17.14",
+    "@types/nodemailer": "^6.4.17",
     "eslint": "^9",
     "tailwindcss": "^4",
+    "tsx": "^4.19.2",
     "typescript": "^5"
   }
 }

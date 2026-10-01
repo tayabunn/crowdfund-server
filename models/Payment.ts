@@ -1,6 +1,15 @@
-const mongoose = require('mongoose');
+import mongoose, { Schema, Document } from 'mongoose';
 
-const PaymentSchema = new mongoose.Schema({
+export interface IPayment extends Document {
+  supporter_email: string;
+  credits_purchased: number;
+  amount_paid: number;
+  payment_intent_id: string;
+  payment_date: Date;
+  status: string;
+}
+
+const PaymentSchema: Schema = new Schema({
   supporter_email: {
     type: String,
     required: true,
@@ -27,4 +36,4 @@ const PaymentSchema = new mongoose.Schema({
   }
 }, { timestamps: true });
 
-module.exports = mongoose.model('Payment', PaymentSchema);
+export default mongoose.model<IPayment>('Payment', PaymentSchema);

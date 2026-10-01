@@ -1,26 +1,29 @@
-const express = require('express');
+import express, { Request, Response } from 'express';
+import Campaign from '../models/Campaign';
+import Contribution from '../models/Contribution';
+import User from '../models/User';
+import Notification from '../models/Notification';
+import { verifyToken, verifyRole, AuthenticatedRequest } from '../middleware/authMiddleware';
+import { sendEmail } from '../services/emailService';
+
 const router = express.Router();
-const Campaign = require('../models/Campaign');
-const Contribution = require('../models/Contribution');
-const User = require('../models/User');
-const { verifyToken, verifyRole } = require('../middleware/authMiddleware');
 
 // Get all approved active campaigns (with pagination and filtering using Aggregation Framework)
-router.get('/', async (req, res) => {
+router.get('/', async (req: Request, res: Response) => {
   try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 6;
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 6;
     const skip = (page - 1) * limit;
     
-    const search = req.query.search || '';
-    const category = req.query.category || 'All Categories';
-    const minGoal = parseFloat(req.query.minGoal);
-    const maxGoal = parseFloat(req.query.maxGoal);
-    const status = req.query.status || 'approved';
-    const deadlineFilter = req.query.deadline || 'active'; // 'active', 'expired', 'all'
+    const search = (req.query.search as string) || '';
+    const category = (req.query.category as string) || 'All Categories';
+    const minGoal = parseFloat(req.query.minGoal as string);
+    const maxGoal = parseFloat(req.query.maxGoal as string);
+    const status = (req.query.status as string) || 'approved';
+    const deadlineFilter = (req.query.deadline as string) || 'active'; // 'active', 'expired', 'all'
 
     // Build Match Query
-    let matchQuery = {};
+    let matchQuery: any = {};
 
     if (status !== 'all') {
       matchQuery.status = status;
@@ -51,8 +54,8 @@ router.get('/', async (req, res) => {
     }
 
     // Sort order
-    const sortBy = req.query.sortBy || 'newest';
-    let sortStage = { createdAt: -1 };
+    const sortBy = (req.query.sortBy as string) || 'newest';
+    let sortStage: any = { createdAt: -1 };
     if (sortBy === 'oldest') {
       sortStage = { createdAt: 1 };
     } else if (sortBy === 'goal_desc') {
@@ -82,35 +85,40 @@ router.get('/', async (req, res) => {
       totalPages: Math.ceil(totalCampaigns / limit),
       currentPage: page
     });
-  } catch (error) {
+  } catch (error: any) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 
 // Get all pending campaigns (Admin)
-router.get('/pending', verifyRole(['Admin']), async (req, res) => {
+router.get('/pending', verifyRole(['Admin']), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const campaigns = await Campaign.find({ status: 'pending' }).sort({ createdAt: -1 });
     res.json(campaigns);
-  } catch (error) {
+  } catch (error: any) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 
 // Get campaigns by creator
-router.get('/creator', verifyRole(['Creator']), async (req, res) => {
+router.get('/creator', verifyRole(['Creator']), async (req: AuthenticatedRequest, res: Response) => {
   try {
+    if (!req.user) {
+      return res.status(401).json({ message: 'User not authenticated' });
+    }
     const campaigns = await Campaign.find({ creator_email: req.user.email }).sort({ deadline: -1 });
     res.json(campaigns);
-  } catch (error) {
+  } catch (error: any) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 
 // Create campaign (Creator)
-router.post('/', verifyRole(['Creator']), async (req, res) => {
+router.post('/', verifyRole(['Creator']), async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const User = require('../models/User');
+    if (!req.user) {
+      return res.status(401).json({ message: 'User not authenticated' });
+    }
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ message: 'User profile not found' });
 
@@ -121,13 +129,13 @@ router.post('/', verifyRole(['Creator']), async (req, res) => {
     });
     await newCampaign.save();
     res.status(201).json(newCampaign);
-  } catch (error) {
+  } catch (error: any) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 
 // Approve/Reject Campaign (Admin)
-router.patch('/:id/status', verifyRole(['Admin']), async (req, res) => {
+router.patch('/:id/status', verifyRole(['Admin']), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { status } = req.body;
     if (!['approved', 'rejected'].includes(status)) {
@@ -143,7 +151,6 @@ router.patch('/:id/status', verifyRole(['Admin']), async (req, res) => {
     await campaign.save();
 
     // Create a notification for the creator
-    const Notification = require('../models/Notification');
     let messageText = '';
     if (status === 'rejected') {
       messageText = `Your campaign "${campaign.title}" has been rejected by the admin.`;
@@ -161,7 +168,6 @@ router.patch('/:id/status', verifyRole(['Admin']), async (req, res) => {
       await notification.save();
 
       // Dispatch automated email notification
-      const { sendEmail } = require('../services/emailService');
       await sendEmail({
         to: campaign.creator_email,
         subject: `Campaign Status Update: ${campaign.title}`,
@@ -178,14 +184,17 @@ router.patch('/:id/status', verifyRole(['Admin']), async (req, res) => {
     }
 
     res.json(campaign);
-  } catch (error) {
+  } catch (error: any) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 
 // Update Campaign (Creator)
-router.put('/:id', verifyRole(['Creator']), async (req, res) => {
+router.put('/:id', verifyRole(['Creator']), async (req: AuthenticatedRequest, res: Response) => {
   try {
+    if (!req.user) {
+      return res.status(401).json({ message: 'User not authenticated' });
+    }
     const { title, story, reward_info } = req.body;
     const campaign = await Campaign.findOneAndUpdate(
       { _id: req.params.id, creator_email: req.user.email },
@@ -194,24 +203,27 @@ router.put('/:id', verifyRole(['Creator']), async (req, res) => {
     );
     if (!campaign) return res.status(404).json({ message: 'Campaign not found or unauthorized' });
     res.json(campaign);
-  } catch (error) {
+  } catch (error: any) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 
 // Get all campaigns for admin management (Admin only)
-router.get('/admin/all', verifyRole(['Admin']), async (req, res) => {
+router.get('/admin/all', verifyRole(['Admin']), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const campaigns = await Campaign.find().sort({ createdAt: -1 });
     res.json(campaigns);
-  } catch (error) {
+  } catch (error: any) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 
 // Delete Campaign (Creator or Admin)
-router.delete('/:id', verifyToken, async (req, res) => {
+router.delete('/:id', verifyToken, async (req: AuthenticatedRequest, res: Response) => {
   try {
+    if (!req.user) {
+      return res.status(401).json({ message: 'User not authenticated' });
+    }
     let campaign;
     if (req.user.role === 'Admin') {
       campaign = await Campaign.findById(req.params.id);
@@ -223,11 +235,11 @@ router.delete('/:id', verifyToken, async (req, res) => {
 
     if (!campaign) return res.status(404).json({ message: 'Campaign not found or unauthorized' });
 
-    // Find all approved contributions for this campaign
-    const approvedContributions = await Contribution.find({ campaign_id: campaign._id, status: 'approved' });
+    // Find all contributions (both approved and pending) for this campaign
+    const contributions = await Contribution.find({ campaign_id: campaign._id });
 
     // Refund each supporter their credits
-    for (const contrib of approvedContributions) {
+    for (const contrib of contributions) {
       const supporter = await User.findOne({ email: contrib.supporter_email });
       if (supporter) {
         supporter.credits += contrib.contribution_amount;
@@ -241,35 +253,35 @@ router.delete('/:id', verifyToken, async (req, res) => {
     // Delete associated contributions
     await Contribution.deleteMany({ campaign_id: campaign._id });
 
-    res.json({ message: 'Campaign deleted successfully and approved supporters refunded' });
-  } catch (error) {
+    res.json({ message: 'Campaign deleted successfully and all contributors refunded' });
+  } catch (error: any) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 
 // Get top 6 funded campaigns
-router.get('/top-funded', async (req, res) => {
+router.get('/top-funded', async (req: Request, res: Response) => {
   try {
     const campaigns = await Campaign.find({ status: 'approved' })
       .sort({ amount_raised: -1 })
       .limit(6);
     res.json(campaigns);
-  } catch (error) {
+  } catch (error: any) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 
 // Get specific campaign by ID
-router.get('/:id', async (req, res) => {
+router.get('/:id', async (req: Request, res: Response) => {
   try {
     const campaign = await Campaign.findById(req.params.id);
     if (!campaign) {
       return res.status(404).json({ message: 'Campaign not found' });
     }
     res.json(campaign);
-  } catch (error) {
+  } catch (error: any) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 
-module.exports = router;
+export default router;

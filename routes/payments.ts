@@ -1,13 +1,13 @@
-const express = require('express');
+import express, { Response } from 'express';
+import User from '../models/User';
+import Payment from '../models/Payment';
+import { verifyRole, AuthenticatedRequest } from '../middleware/authMiddleware';
+
 const router = express.Router();
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
-const User = require('../models/User');
-const { verifyRole } = require('../middleware/authMiddleware');
-
-const Payment = require('../models/Payment');
 
 // Create payment intent
-router.post('/create-payment-intent', verifyRole(['Supporter']), async (req, res) => {
+router.post('/create-payment-intent', verifyRole(['Supporter']), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { amount } = req.body; // Amount in dollars
     
@@ -20,19 +20,24 @@ router.post('/create-payment-intent', verifyRole(['Supporter']), async (req, res
     res.send({
       clientSecret: paymentIntent.client_secret,
     });
-  } catch (error) {
+  } catch (error: any) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 
 // Confirm payment and add credits
-router.post('/confirm-payment', verifyRole(['Supporter']), async (req, res) => {
+router.post('/confirm-payment', verifyRole(['Supporter']), async (req: AuthenticatedRequest, res: Response) => {
   try {
+    if (!req.user) {
+      return res.status(401).json({ message: 'User not authenticated' });
+    }
     const { paymentIntentId, creditsPurchased, amountPaid } = req.body;
 
     // Verify payment intent with Stripe (Skipped here for simplicity, assuming client sends valid confirmation)
     // Add credits to user
     const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    
     user.credits += creditsPurchased;
     await user.save();
 
@@ -48,9 +53,9 @@ router.post('/confirm-payment', verifyRole(['Supporter']), async (req, res) => {
     await paymentRecord.save();
 
     res.json({ message: 'Payment successful, credits added.', credits: user.credits });
-  } catch (error) {
+  } catch (error: any) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 
-module.exports = router;
+export default router;

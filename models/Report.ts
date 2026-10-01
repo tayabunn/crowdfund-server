@@ -1,6 +1,16 @@
-const mongoose = require('mongoose');
+import mongoose, { Schema, Document } from 'mongoose';
 
-const ReportSchema = new mongoose.Schema({
+export interface IReport extends Document {
+  campaign_id: mongoose.Types.ObjectId;
+  campaign_title: string;
+  reporter_email: string;
+  reporter_name: string;
+  reason: string;
+  details: string;
+  status: 'pending' | 'resolved';
+}
+
+const ReportSchema: Schema = new Schema({
   campaign_id: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Campaign',
@@ -33,4 +43,4 @@ const ReportSchema = new mongoose.Schema({
   }
 }, { timestamps: true });
 
-module.exports = mongoose.model('Report', ReportSchema);
+export default mongoose.model<IReport>('Report', ReportSchema);

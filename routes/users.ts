@@ -1,13 +1,18 @@
-const express = require('express');
+import express, { Response } from 'express';
+import User from '../models/User';
+import Campaign from '../models/Campaign';
+import Withdrawal from '../models/Withdrawal';
+import Payment from '../models/Payment';
+import { verifyToken, verifyRole, AuthenticatedRequest } from '../middleware/authMiddleware';
+
 const router = express.Router();
-const User = require('../models/User');
-const Campaign = require('../models/Campaign');
-const Withdrawal = require('../models/Withdrawal');
-const { verifyToken, verifyRole } = require('../middleware/authMiddleware');
 
 // Get current user profile (Any authenticated user)
-router.get('/me', verifyToken, async (req, res) => {
+router.get('/me', verifyToken, async (req: AuthenticatedRequest, res: Response) => {
   try {
+    if (!req.user) {
+      return res.status(401).json({ message: 'User not authenticated' });
+    }
     const user = await User.findById(req.user.id).select('-password');
     if (!user) return res.status(404).json({ message: 'User not found' });
     
@@ -23,14 +28,17 @@ router.get('/me', verifyToken, async (req, res) => {
     }
     
     res.json(userObj);
-  } catch (error) {
+  } catch (error: any) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
  
 // Update user profile (Any authenticated user)
-router.put('/profile', verifyToken, async (req, res) => {
+router.put('/profile', verifyToken, async (req: AuthenticatedRequest, res: Response) => {
   try {
+    if (!req.user) {
+      return res.status(401).json({ message: 'User not authenticated' });
+    }
     const { name, email, photo_url } = req.body;
     const userId = req.user.id;
 
@@ -42,7 +50,7 @@ router.put('/profile', verifyToken, async (req, res) => {
       }
     }
 
-    const updateFields = {};
+    const updateFields: any = {};
     if (name !== undefined) updateFields.name = name;
     if (email !== undefined) updateFields.email = email;
     if (photo_url !== undefined) updateFields.photo_url = photo_url;
@@ -54,13 +62,13 @@ router.put('/profile', verifyToken, async (req, res) => {
     ).select('-password');
 
     res.json(updatedUser);
-  } catch (error) {
+  } catch (error: any) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 
 // Get admin dashboard stats
-router.get('/admin/stats', verifyRole(['Admin']), async (req, res) => {
+router.get('/admin/stats', verifyRole(['Admin']), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const totalSupporters = await User.countDocuments({ role: 'Supporter' });
     const totalCreators = await User.countDocuments({ role: 'Creator' });
@@ -68,9 +76,6 @@ router.get('/admin/stats', verifyRole(['Admin']), async (req, res) => {
     // Calculate total available credits dynamically
     const users = await User.find({});
     let totalAvailableCredits = 0;
-    
-    const Campaign = require('../models/Campaign');
-    const Withdrawal = require('../models/Withdrawal');
     
     const campaigns = await Campaign.find({ status: 'approved' });
     const withdrawals = await Withdrawal.find({});
@@ -88,7 +93,6 @@ router.get('/admin/stats', verifyRole(['Admin']), async (req, res) => {
     }
 
     // Calculate total payments processed from Payments collection
-    const Payment = require('../models/Payment');
     const payments = await Payment.find({ status: 'succeeded' });
     const totalPaymentsProcessed = payments.reduce((sum, p) => sum + p.amount_paid, 0);
 
@@ -98,23 +102,23 @@ router.get('/admin/stats', verifyRole(['Admin']), async (req, res) => {
       totalAvailableCredits,
       totalPaymentsProcessed
     });
-  } catch (error) {
+  } catch (error: any) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 
 // Get all users (Admin only)
-router.get('/', verifyRole(['Admin']), async (req, res) => {
+router.get('/', verifyRole(['Admin']), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const users = await User.find().select('-password');
     res.json(users);
-  } catch (error) {
+  } catch (error: any) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 
 // Update user role (Admin only)
-router.put('/:id/role', verifyRole(['Admin']), async (req, res) => {
+router.put('/:id/role', verifyRole(['Admin']), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { role } = req.body;
     if (!['Supporter', 'Creator', 'Admin'].includes(role)) {
@@ -122,19 +126,19 @@ router.put('/:id/role', verifyRole(['Admin']), async (req, res) => {
     }
     const user = await User.findByIdAndUpdate(req.params.id, { role }, { new: true }).select('-password');
     res.json(user);
-  } catch (error) {
+  } catch (error: any) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 
 // Remove user (Admin only)
-router.delete('/:id', verifyRole(['Admin']), async (req, res) => {
+router.delete('/:id', verifyRole(['Admin']), async (req: AuthenticatedRequest, res: Response) => {
   try {
     await User.findByIdAndDelete(req.params.id);
     res.json({ message: 'User removed successfully' });
-  } catch (error) {
+  } catch (error: any) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 
-module.exports = router;
+export default router;

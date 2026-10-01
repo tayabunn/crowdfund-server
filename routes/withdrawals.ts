@@ -1,15 +1,20 @@
-const express = require('express');
+import express, { Response } from 'express';
+import Withdrawal from '../models/Withdrawal';
+import User from '../models/User';
+import Campaign from '../models/Campaign';
+import Notification from '../models/Notification';
+import { verifyRole, AuthenticatedRequest } from '../middleware/authMiddleware';
+import { sendEmail } from '../services/emailService';
+
 const router = express.Router();
-const Withdrawal = require('../models/Withdrawal');
-const User = require('../models/User');
-const Campaign = require('../models/Campaign');
-const Notification = require('../models/Notification');
-const { verifyRole } = require('../middleware/authMiddleware');
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 
 // Request withdrawal (Creator)
-router.post('/', verifyRole(['Creator']), async (req, res) => {
+router.post('/', verifyRole(['Creator']), async (req: AuthenticatedRequest, res: Response) => {
   try {
+    if (!req.user) {
+      return res.status(401).json({ message: 'User not authenticated' });
+    }
     const { withdrawal_credit, payment_system, account_number } = req.body;
     
     // Check if creator has enough raised credits
@@ -37,7 +42,7 @@ router.post('/', verifyRole(['Creator']), async (req, res) => {
     const withdrawal_amount = withdrawal_credit / 20; // 20 credits = 1 dollar
 
     const withdrawal = new Withdrawal({
-      creator_name: req.user.name,
+      creator_name: req.user.name || '',
       creator_email: req.user.email,
       withdrawal_credit,
       withdrawal_amount,
@@ -49,33 +54,36 @@ router.post('/', verifyRole(['Creator']), async (req, res) => {
 
     await withdrawal.save();
     res.status(201).json(withdrawal);
-  } catch (error) {
+  } catch (error: any) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 
 // Get creator withdrawal history
-router.get('/history', verifyRole(['Creator']), async (req, res) => {
+router.get('/history', verifyRole(['Creator']), async (req: AuthenticatedRequest, res: Response) => {
   try {
+    if (!req.user) {
+      return res.status(401).json({ message: 'User not authenticated' });
+    }
     const withdrawals = await Withdrawal.find({ creator_email: req.user.email }).sort({ withdraw_date: -1 });
     res.json(withdrawals);
-  } catch (error) {
+  } catch (error: any) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 
 // Get all pending withdrawal requests (Admin)
-router.get('/pending', verifyRole(['Admin']), async (req, res) => {
+router.get('/pending', verifyRole(['Admin']), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const withdrawals = await Withdrawal.find({ status: 'pending' }).sort({ withdraw_date: -1 });
     res.json(withdrawals);
-  } catch (error) {
+  } catch (error: any) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 
 // Approve withdrawal (Admin)
-router.patch('/:id/approve', verifyRole(['Admin']), async (req, res) => {
+router.patch('/:id/approve', verifyRole(['Admin']), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const withdrawal = await Withdrawal.findById(req.params.id);
     if (!withdrawal) return res.status(404).json({ message: 'Withdrawal not found' });
@@ -97,7 +105,7 @@ router.patch('/:id/approve', verifyRole(['Admin']), async (req, res) => {
           // Otherwise, simulate a successful Stripe transfer for standard card/email account inputs in development
           console.log(`[Stripe Simulation] Successfully processed payout of $${withdrawal.withdrawal_amount} to Stripe account/email ${withdrawal.account_number}`);
         }
-      } catch (stripeErr) {
+      } catch (stripeErr: any) {
         console.error('Stripe Payout Error:', stripeErr.message);
         // We log the error but still approve the record locally to prevent breaking the flow
       }
@@ -123,7 +131,6 @@ router.patch('/:id/approve', verifyRole(['Admin']), async (req, res) => {
     await notification.save();
 
     // Trigger automated email
-    const { sendEmail } = require('../services/emailService');
     await sendEmail({
       to: withdrawal.creator_email,
       subject: `Withdrawal Request Approved: $${withdrawal.withdrawal_amount}`,
@@ -141,10 +148,9 @@ router.patch('/:id/approve', verifyRole(['Admin']), async (req, res) => {
     });
 
     res.json(withdrawal);
-  } catch (error) {
+  } catch (error: any) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 
-module.exports = router;
-
+export default router;
