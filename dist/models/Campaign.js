@@ -34,6 +34,44 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 const mongoose_1 = __importStar(require("mongoose"));
+const RewardSchema = new mongoose_1.Schema({
+    title: { type: String, required: true },
+    description: { type: String, required: true },
+    amount: { type: Number, required: true },
+    estimated_delivery: { type: String, default: '' },
+    items: [{ type: String }],
+    claimed_count: { type: Number, default: 0 },
+    max_slots: { type: Number }
+});
+const StretchGoalSchema = new mongoose_1.Schema({
+    amount: { type: Number, required: true },
+    title: { type: String, required: true },
+    description: { type: String, required: true },
+    is_unlocked: { type: Boolean, default: false }
+});
+const CampaignUpdateSchema = new mongoose_1.Schema({
+    title: { type: String, required: true },
+    content: { type: String, required: true },
+    date: { type: Date, default: Date.now },
+    author_name: { type: String, required: true }
+});
+const CommentReplySchema = new mongoose_1.Schema({
+    user_name: { type: String, required: true },
+    user_email: { type: String, required: true },
+    user_photo: { type: String, default: '' },
+    user_role: { type: String, default: 'Supporter' },
+    text: { type: String, required: true },
+    date: { type: Date, default: Date.now }
+});
+const CommentSchema = new mongoose_1.Schema({
+    user_name: { type: String, required: true },
+    user_email: { type: String, required: true },
+    user_photo: { type: String, default: '' },
+    user_role: { type: String, default: 'Supporter' },
+    text: { type: String, required: true },
+    date: { type: Date, default: Date.now },
+    replies: [CommentReplySchema]
+});
 const CampaignSchema = new mongoose_1.Schema({
     title: {
         type: String,
@@ -83,6 +121,15 @@ const CampaignSchema = new mongoose_1.Schema({
     amount_raised: {
         type: Number,
         default: 0,
-    }
+    },
+    funding_type: {
+        type: String,
+        enum: ['flexible', 'fixed'],
+        default: 'flexible',
+    },
+    rewards: [RewardSchema],
+    stretch_goals: [StretchGoalSchema],
+    updates: [CampaignUpdateSchema],
+    comments: [CommentSchema]
 }, { timestamps: true });
 exports.default = mongoose_1.default.model('Campaign', CampaignSchema);
