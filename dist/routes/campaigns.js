@@ -4,6 +4,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
+const mongoose_1 = __importDefault(require("mongoose"));
 const Campaign_1 = __importDefault(require("../models/Campaign"));
 const Contribution_1 = __importDefault(require("../models/Contribution"));
 const User_1 = __importDefault(require("../models/User"));
@@ -11,7 +12,7 @@ const Notification_1 = __importDefault(require("../models/Notification"));
 const authMiddleware_1 = require("../middleware/authMiddleware");
 const emailService_1 = require("../services/emailService");
 const router = express_1.default.Router();
-// Get all approved active campaigns (with pagination and filtering using Aggregation Framework)
+// Get all approved active campaigns (with pagination and filtering)
 router.get('/', async (req, res) => {
     try {
         const page = parseInt(req.query.page) || 1;
@@ -61,6 +62,9 @@ router.get('/', async (req, res) => {
         else if (sortBy === 'goal_asc') {
             sortStage = { funding_goal: 1 };
         }
+        else if (sortBy === 'popular') {
+            sortStage = { amount_raised: -1 };
+        }
         const pipeline = [
             { $match: matchQuery },
             { $sort: sortStage },
@@ -80,6 +84,164 @@ router.get('/', async (req, res) => {
             totalPages: Math.ceil(totalCampaigns / limit),
             currentPage: page
         });
+    }
+    catch (error) {
+        res.status(500).json({ message: 'Server error', error: error.message });
+    }
+});
+// Get user bookmarked campaigns
+router.get('/bookmarks/my-saved', authMiddleware_1.verifyToken, async (req, res) => {
+    try {
+        if (!req.user) {
+            return res.status(401).json({ message: 'User not authenticated' });
+        }
+        const user = await User_1.default.findById(req.user.id).populate('bookmarks');
+        if (!user)
+            return res.status(404).json({ message: 'User not found' });
+        res.json(user.bookmarks || []);
+    }
+    catch (error) {
+        res.status(500).json({ message: 'Server error', error: error.message });
+    }
+});
+// Toggle bookmark for campaign
+router.post('/:id/bookmark', authMiddleware_1.verifyToken, async (req, res) => {
+    try {
+        if (!req.user) {
+            return res.status(401).json({ message: 'User not authenticated' });
+        }
+        const user = await User_1.default.findById(req.user.id);
+        if (!user)
+            return res.status(404).json({ message: 'User not found' });
+        const idStr = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+        const campaignId = new mongoose_1.default.Types.ObjectId(idStr);
+        const existingIndex = user.bookmarks.findIndex(b => b.toString() === idStr);
+        let isSaved = false;
+        if (existingIndex > -1) {
+            user.bookmarks.splice(existingIndex, 1);
+            isSaved = false;
+        }
+        else {
+            user.bookmarks.push(campaignId);
+            isSaved = true;
+        }
+        await user.save();
+        res.json({ isSaved, bookmarksCount: user.bookmarks.length });
+    }
+    catch (error) {
+        res.status(500).json({ message: 'Server error', error: error.message });
+    }
+});
+// Post an update to campaign (Creator only)
+router.post('/:id/updates', (0, authMiddleware_1.verifyRole)(['Creator']), async (req, res) => {
+    try {
+        if (!req.user) {
+            return res.status(401).json({ message: 'User not authenticated' });
+        }
+        const { title, content } = req.body;
+        if (!title || !content) {
+            return res.status(400).json({ message: 'Title and content are required' });
+        }
+        const campaign = await Campaign_1.default.findOne({ _id: req.params.id, creator_email: req.user.email });
+        if (!campaign) {
+            return res.status(404).json({ message: 'Campaign not found or unauthorized' });
+        }
+        campaign.updates.push({
+            title,
+            content,
+            date: new Date(),
+            author_name: campaign.creator_name
+        });
+        await campaign.save();
+        // Broadcast in-app notification to all campaign contributors
+        const contributions = await Contribution_1.default.find({ campaign_id: campaign._id });
+        const uniqueEmails = Array.from(new Set(contributions.map(c => c.supporter_email)));
+        for (const email of uniqueEmails) {
+            const notif = new Notification_1.default({
+                message: `New update posted on "${campaign.title}": ${title}`,
+                toEmail: email,
+                actionRoute: `/explore/${campaign._id}?tab=updates`,
+                time: new Date()
+            });
+            await notif.save();
+        }
+        res.status(201).json(campaign.updates);
+    }
+    catch (error) {
+        res.status(500).json({ message: 'Server error', error: error.message });
+    }
+});
+// Post a comment to campaign (Any Authenticated User)
+router.post('/:id/comments', authMiddleware_1.verifyToken, async (req, res) => {
+    try {
+        if (!req.user) {
+            return res.status(401).json({ message: 'User not authenticated' });
+        }
+        const { text } = req.body;
+        if (!text || !text.trim()) {
+            return res.status(400).json({ message: 'Comment text is required' });
+        }
+        const user = await User_1.default.findById(req.user.id);
+        if (!user)
+            return res.status(404).json({ message: 'User not found' });
+        const campaign = await Campaign_1.default.findById(req.params.id);
+        if (!campaign)
+            return res.status(404).json({ message: 'Campaign not found' });
+        campaign.comments.unshift({
+            user_name: user.name,
+            user_email: user.email,
+            user_photo: user.photo_url || '',
+            user_role: user.role,
+            text: text.trim(),
+            date: new Date(),
+            replies: []
+        });
+        await campaign.save();
+        // Notify campaign creator if commenter is someone else
+        if (campaign.creator_email !== user.email) {
+            const notif = new Notification_1.default({
+                message: `${user.name} commented on your campaign "${campaign.title}".`,
+                toEmail: campaign.creator_email,
+                actionRoute: `/explore/${campaign._id}?tab=comments`,
+                time: new Date()
+            });
+            await notif.save();
+        }
+        res.status(201).json(campaign.comments);
+    }
+    catch (error) {
+        res.status(500).json({ message: 'Server error', error: error.message });
+    }
+});
+// Reply to a comment (Any Authenticated User)
+router.post('/:id/comments/:commentId/reply', authMiddleware_1.verifyToken, async (req, res) => {
+    try {
+        if (!req.user) {
+            return res.status(401).json({ message: 'User not authenticated' });
+        }
+        const { text } = req.body;
+        if (!text || !text.trim()) {
+            return res.status(400).json({ message: 'Reply text is required' });
+        }
+        const user = await User_1.default.findById(req.user.id);
+        if (!user)
+            return res.status(404).json({ message: 'User not found' });
+        const campaign = await Campaign_1.default.findById(req.params.id);
+        if (!campaign)
+            return res.status(404).json({ message: 'Campaign not found' });
+        const comment = campaign.comments.find(c => c._id?.toString() === req.params.commentId);
+        if (!comment)
+            return res.status(404).json({ message: 'Comment not found' });
+        comment.replies.push({
+            user_name: user.name,
+            user_email: user.email,
+            user_photo: user.photo_url || '',
+            user_role: user.role,
+            text: text.trim(),
+            date: new Date()
+        });
+        await campaign.save();
+        res.status(201).json(campaign.comments);
     }
     catch (error) {
         res.status(500).json({ message: 'Server error', error: error.message });
@@ -185,8 +347,8 @@ router.put('/:id', (0, authMiddleware_1.verifyRole)(['Creator']), async (req, re
         if (!req.user) {
             return res.status(401).json({ message: 'User not authenticated' });
         }
-        const { title, story, reward_info } = req.body;
-        const campaign = await Campaign_1.default.findOneAndUpdate({ _id: req.params.id, creator_email: req.user.email }, { title, story, reward_info }, { new: true });
+        const { title, story, reward_info, rewards, stretch_goals, funding_type } = req.body;
+        const campaign = await Campaign_1.default.findOneAndUpdate({ _id: req.params.id, creator_email: req.user.email }, { $set: { title, story, reward_info, rewards, stretch_goals, funding_type } }, { new: true });
         if (!campaign)
             return res.status(404).json({ message: 'Campaign not found or unauthorized' });
         res.json(campaign);

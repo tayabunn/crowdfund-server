@@ -61,5 +61,9 @@ const UserSchema = new mongoose_1.Schema({
         type: Number,
         default: 0,
     },
+    bookmarks: [{
+            type: mongoose_1.default.Schema.Types.ObjectId,
+            ref: 'Campaign'
+        }],
 }, { timestamps: true });
 exports.default = mongoose_1.default.model('User', UserSchema);
