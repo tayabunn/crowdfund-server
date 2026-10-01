@@ -7,6 +7,7 @@ export interface IUser extends Document {
   photo_url?: string;
   role: 'Supporter' | 'Creator' | 'Admin';
   credits: number;
+  bookmarks: mongoose.Types.ObjectId[];
 }
 
 const UserSchema: Schema = new Schema({
@@ -36,6 +37,10 @@ const UserSchema: Schema = new Schema({
     type: Number,
     default: 0,
   },
+  bookmarks: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Campaign'
+  }],
 }, { timestamps: true });
 
 export default mongoose.model<IUser>('User', UserSchema);
