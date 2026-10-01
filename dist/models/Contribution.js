@@ -85,6 +85,14 @@ const ContributionSchema = new mongoose_1.Schema({
     message: {
         type: String,
         default: ''
+    },
+    reward_id: {
+        type: String,
+        default: ''
+    },
+    reward_title: {
+        type: String,
+        default: ''
     }
 }, { timestamps: true });
 exports.default = mongoose_1.default.model('Contribution', ContributionSchema);
