@@ -14,6 +14,8 @@ export interface IContribution extends Document {
   status: 'pending' | 'approved' | 'rejected';
   current_date: Date;
   message: string;
+  reward_id?: string;
+  reward_title?: string;
 }
 
 const ContributionSchema: Schema = new Schema({
@@ -65,6 +67,14 @@ const ContributionSchema: Schema = new Schema({
     default: Date.now,
   },
   message: {
+    type: String,
+    default: ''
+  },
+  reward_id: {
+    type: String,
+    default: ''
+  },
+  reward_title: {
     type: String,
     default: ''
   }
